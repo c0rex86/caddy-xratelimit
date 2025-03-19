@@ -1,0 +1,22 @@
+{
+    order xratelimit before respond
+}
+
+localhost {
+    xratelimit
+
+    respond "Hello, World!"
+}
+
+admin.localhost {
+    redir http://localhost:6666{uri} permanent
+}
+
+api.localhost {
+    xratelimit 20 30m {
+        whitelist 127.0.0.1 10.0.0.0/8 192.168.0.0/16
+        blacklist 198.51.100.0/24
+    }
+    
+    respond "API endpoint"
+} 

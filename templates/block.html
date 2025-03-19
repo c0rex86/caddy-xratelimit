@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IP адрес заблокирован</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: white;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            max-width: 600px;
+            width: 90%;
+            padding: 30px;
+            border: 1px solid #333;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+        h1 {
+            color: #f24b4b;
+            margin-bottom: 30px;
+            font-size: 2.2rem;
+        }
+        p {
+            margin-bottom: 20px;
+            line-height: 1.6;
+            font-size: 1.1rem;
+        }
+        .octagon {
+            width: 80px;
+            height: 80px;
+            background-color: #f24b4b;
+            position: relative;
+            margin: 0 auto 30px;
+            clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
+        }
+        .details {
+            background-color: #1e1e1e;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 30px 0;
+            text-align: left;
+        }
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+        }
+        .countdown {
+            font-size: 2rem;
+            color: #f24b4b;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        .countdown-container {
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="octagon"></div>
+        <h1>Ваш IP адрес заблокирован</h1>
+        <p>
+            Наша система обнаружила необычно большое количество запросов с вашего IP-адреса. В целях безопасности мы временно ограничили доступ к сайту.
+        </p>
+        
+        <div class="details">
+            <div class="detail-item">
+                <span>IP адрес:</span>
+                <span>{{.IP}}</span>
+            </div>
+            <div class="detail-item">
+                <span>Причина блокировки:</span>
+                <span>{{.BlockReason}}</span>
+            </div>
+            <div class="detail-item">
+                <span>Лимит запросов:</span>
+                <span>{{.RequestLimit}} в секунду</span>
+            </div>
+            <div class="detail-item">
+                <span>Время блокировки:</span>
+                <span>{{.BlockDuration}} минут</span>
+            </div>
+        </div>
+        
+        <div class="countdown-container">
+            <h2>Блокировка будет снята через:</h2>
+            <div class="countdown">
+                <span id="timer">{{.TotalRemaining}}</span>
+            </div>
+        </div>
+        
+        <p>После окончания блокировки вы сможете продолжить использование сайта без ограничений.</p>
+    </div>
+
+    <script>
+        let countdownDate = new Date();
+        countdownDate.setMinutes(countdownDate.getMinutes() + parseInt("{{.RemainingMin}}"));
+        countdownDate.setSeconds(countdownDate.getSeconds() + parseInt("{{.RemainingSec}}"));
+        
+        let timer = document.getElementById('timer');
+        
+        let countdown = setInterval(function() {
+            let now = new Date().getTime();
+            let distance = countdownDate - now;
+            
+            let minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+            let seconds = Math.floor((distance % (1000 * 60)) / 1000);
+            
+            timer.innerHTML = minutes.toString().padStart(2, '0') + ":" + seconds.toString().padStart(2, '0');
+            
+            if (distance < 0) {
+                clearInterval(countdown);
+                timer.innerHTML = "00:00";
+                window.location.reload();
+            }
+        }, 1000);
+    </script>
+</body>
+</html> 
