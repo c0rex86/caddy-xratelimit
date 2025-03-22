@@ -11,7 +11,6 @@ import (
 	"go.uber.org/zap"
 )
 
-
 type adminServer struct {
 	rateLimit *RateLimit
 	server    *http.Server
@@ -28,28 +27,26 @@ type AdminStats struct {
 	BlockDuration     string                 `json:"block_duration"`
 	WhitelistedIPs    []string               `json:"whitelisted_ips"`
 	BlacklistedIPs    []string               `json:"blacklisted_ips"`
-	
-	// Advanced statistics
-	TotalRequests       int64             `json:"total_requests"`
-	TotalBlocked        int64             `json:"total_blocked"`
-	TotalWhitelisted    int64             `json:"total_whitelisted"`
-	TotalBlacklisted    int64             `json:"total_blacklisted"`
-	RequestsPerInterval map[string]int64   `json:"requests_per_interval"`
-	BlocksPerInterval   map[string]int64   `json:"blocks_per_interval"`
-	TopVisitors         map[string]int64   `json:"top_visitors"`
-}
 
+	// Advanced statistics
+	TotalRequests       int64            `json:"total_requests"`
+	TotalBlocked        int64            `json:"total_blocked"`
+	TotalWhitelisted    int64            `json:"total_whitelisted"`
+	TotalBlacklisted    int64            `json:"total_blacklisted"`
+	RequestsPerInterval map[string]int64 `json:"requests_per_interval"`
+	BlocksPerInterval   map[string]int64 `json:"blocks_per_interval"`
+	TopVisitors         map[string]int64 `json:"top_visitors"`
+}
 
 type VisitorInfo struct {
-	IP             string    `json:"ip"`
-	RequestCount   int       `json:"request_count"`
-	LastSeen       time.Time `json:"last_seen"`
-	Blocked        bool      `json:"blocked"`
-	BlockedAt      time.Time `json:"blocked_at,omitempty"`
-	BlockedUntil   time.Time `json:"blocked_until,omitempty"`
-	RemainingTime  string    `json:"remaining_time,omitempty"`
+	IP            string    `json:"ip"`
+	RequestCount  int       `json:"request_count"`
+	LastSeen      time.Time `json:"last_seen"`
+	Blocked       bool      `json:"blocked"`
+	BlockedAt     time.Time `json:"blocked_at,omitempty"`
+	BlockedUntil  time.Time `json:"blocked_until,omitempty"`
+	RemainingTime string    `json:"remaining_time,omitempty"`
 }
-
 
 func newAdminServer(rl *RateLimit, port int, logger *zap.Logger) *adminServer {
 	return &adminServer{
@@ -59,10 +56,9 @@ func newAdminServer(rl *RateLimit, port int, logger *zap.Logger) *adminServer {
 	}
 }
 
-
 func (as *adminServer) start() error {
 	mux := http.NewServeMux()
-	
+
 	mux.HandleFunc("/", as.handleIndex)
 	mux.HandleFunc("/api/stats", as.handleStats)
 	mux.HandleFunc("/api/config", as.handleConfig)
@@ -70,16 +66,15 @@ func (as *adminServer) start() error {
 	mux.HandleFunc("/api/whitelist", as.handleWhitelist)
 	mux.HandleFunc("/api/blacklist", as.handleBlacklist)
 	mux.HandleFunc("/api/metrics", as.handleMetrics)
-	
+
 	as.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", as.port),
 		Handler: mux,
 	}
-	
+
 	as.logger.Info("Starting admin server", zap.Int("port", as.port))
 	return as.server.ListenAndServe()
 }
-
 
 func (as *adminServer) stop() error {
 	if as.server != nil {
@@ -90,7 +85,6 @@ func (as *adminServer) stop() error {
 	return nil
 }
 
-
 func (as *adminServer) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(adminIndexHTML))
@@ -99,7 +93,7 @@ func (as *adminServer) handleIndex(w http.ResponseWriter, r *http.Request) {
 func (as *adminServer) handleStats(w http.ResponseWriter, r *http.Request) {
 	as.rateLimit.mu.RLock()
 	defer as.rateLimit.mu.RUnlock()
-	
+
 	stats := AdminStats{
 		TotalVisitors:     len(as.rateLimit.visitors),
 		BlockedVisitors:   0,
@@ -107,52 +101,48 @@ func (as *adminServer) handleStats(w http.ResponseWriter, r *http.Request) {
 		RequestsPerSecond: as.rateLimit.RequestsPerSecond,
 		BlockDuration:     as.rateLimit.BlockDuration,
 	}
-	
-	
+
 	as.rateLimit.stats.RLock()
 	stats.TotalRequests = as.rateLimit.stats.totalRequests
 	stats.TotalBlocked = as.rateLimit.stats.totalBlocked
 	stats.TotalWhitelisted = as.rateLimit.stats.totalWhitelisted
 	stats.TotalBlacklisted = as.rateLimit.stats.totalBlacklisted
-	
-	
+
 	stats.RequestsPerInterval = make(map[string]int64)
 	for k, v := range as.rateLimit.stats.requestsPerInterval {
 		stats.RequestsPerInterval[k] = v
 	}
-	
+
 	stats.BlocksPerInterval = make(map[string]int64)
 	for k, v := range as.rateLimit.stats.blocksPerInterval {
 		stats.BlocksPerInterval[k] = v
 	}
-	
+
 	stats.TopVisitors = make(map[string]int64)
 	for k, v := range as.rateLimit.stats.topVisitors {
 		stats.TopVisitors[k] = v
 	}
 	as.rateLimit.stats.RUnlock()
-	
-	
+
 	whitelistedIPs := make([]string, 0, len(as.rateLimit.whitelist))
 	for ip := range as.rateLimit.whitelist {
 		whitelistedIPs = append(whitelistedIPs, ip)
 	}
 	stats.WhitelistedIPs = whitelistedIPs
-	
-	
+
 	blacklistedIPs := make([]string, 0, len(as.rateLimit.blacklist))
 	for ip := range as.rateLimit.blacklist {
 		blacklistedIPs = append(blacklistedIPs, ip)
 	}
 	stats.BlacklistedIPs = blacklistedIPs
-	
+
 	now := time.Now()
 	for ip, v := range as.rateLimit.visitors {
 		isBlocked := v.blocked && now.Before(v.unblockAt)
 		if isBlocked {
 			stats.BlockedVisitors++
 		}
-		
+
 		var remainingTime string
 		if isBlocked {
 			remaining := v.unblockAt.Sub(now)
@@ -160,7 +150,7 @@ func (as *adminServer) handleStats(w http.ResponseWriter, r *http.Request) {
 			seconds := int(remaining.Seconds()) % 60
 			remainingTime = fmt.Sprintf("%d:%02d", minutes, seconds)
 		}
-		
+
 		stats.VisitorDetails[ip] = VisitorInfo{
 			IP:            ip,
 			RequestCount:  v.count,
@@ -171,7 +161,7 @@ func (as *adminServer) handleStats(w http.ResponseWriter, r *http.Request) {
 			RemainingTime: remainingTime,
 		}
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(stats)
 }
@@ -181,13 +171,13 @@ func (as *adminServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	err := r.ParseForm()
 	if err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}
-	
+
 	// Update requests per second
 	if rps := r.FormValue("requests_per_second"); rps != "" {
 		rpsInt, err := strconv.Atoi(rps)
@@ -199,7 +189,7 @@ func (as *adminServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 		as.rateLimit.RequestsPerSecond = rpsInt
 		as.rateLimit.mu.Unlock()
 	}
-	
+
 	// Update block duration
 	if blockDuration := r.FormValue("block_duration"); blockDuration != "" {
 		duration, err := time.ParseDuration(blockDuration)
@@ -212,7 +202,7 @@ func (as *adminServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 		as.rateLimit.blockDuration = duration
 		as.rateLimit.mu.Unlock()
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"success"}`))
 }
@@ -223,13 +213,13 @@ func (as *adminServer) handleUnblock(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	ip := r.FormValue("ip")
 	if ip == "" {
 		http.Error(w, "IP address required", http.StatusBadRequest)
 		return
 	}
-	
+
 	// Unblock the IP
 	as.rateLimit.mu.Lock()
 	if v, exists := as.rateLimit.visitors[ip]; exists {
@@ -237,7 +227,7 @@ func (as *adminServer) handleUnblock(w http.ResponseWriter, r *http.Request) {
 		v.count = 0
 	}
 	as.rateLimit.mu.Unlock()
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"success"}`))
 }
@@ -248,25 +238,25 @@ func (as *adminServer) handleWhitelist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	err := r.ParseForm()
 	if err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}
-	
+
 	ip := r.FormValue("ip")
 	if ip == "" {
 		http.Error(w, "IP address required", http.StatusBadRequest)
 		return
 	}
-	
+
 	action := r.FormValue("action")
 	if action != "add" && action != "remove" {
 		http.Error(w, "Invalid action", http.StatusBadRequest)
 		return
 	}
-	
+
 	as.rateLimit.mu.Lock()
 	if action == "add" {
 		as.rateLimit.whitelist[ip] = true
@@ -275,55 +265,53 @@ func (as *adminServer) handleWhitelist(w http.ResponseWriter, r *http.Request) {
 		delete(as.rateLimit.whitelist, ip)
 	}
 	as.rateLimit.mu.Unlock()
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"success"}`))
 }
-
 
 func (as *adminServer) handleBlacklist(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	err := r.ParseForm()
 	if err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}
-	
+
 	ip := r.FormValue("ip")
 	if ip == "" {
 		http.Error(w, "IP address required", http.StatusBadRequest)
 		return
 	}
-	
+
 	action := r.FormValue("action")
 	if action != "add" && action != "remove" {
 		http.Error(w, "Invalid action", http.StatusBadRequest)
 		return
 	}
-	
+
 	as.rateLimit.mu.Lock()
 	if action == "add" {
 		as.rateLimit.blacklist[ip] = true
-		
+
 		delete(as.rateLimit.whitelist, ip)
 	} else {
 		delete(as.rateLimit.blacklist, ip)
 	}
 	as.rateLimit.mu.Unlock()
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"success"}`))
 }
 
-
 func (as *adminServer) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	as.rateLimit.stats.RLock()
 	defer as.rateLimit.stats.RUnlock()
-	
+
 	metrics := struct {
 		RequestsPerInterval map[string]int64 `json:"requests_per_interval"`
 		BlocksPerInterval   map[string]int64 `json:"blocks_per_interval"`
@@ -341,20 +329,19 @@ func (as *adminServer) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		TotalBlacklisted:    as.rateLimit.stats.totalBlacklisted,
 		TopVisitors:         make(map[string]int64),
 	}
-	
 
 	for k, v := range as.rateLimit.stats.requestsPerInterval {
 		metrics.RequestsPerInterval[k] = v
 	}
-	
+
 	for k, v := range as.rateLimit.stats.blocksPerInterval {
 		metrics.BlocksPerInterval[k] = v
 	}
-	
+
 	for k, v := range as.rateLimit.stats.topVisitors {
 		metrics.TopVisitors[k] = v
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(metrics)
 }
@@ -665,6 +652,10 @@ const adminIndexHTML = `<!DOCTYPE html>
                 </div>
             </div>
         </div>
+        
+        <footer style="text-align: center; margin-top: 30px; padding: 15px; border-top: 1px solid #333; color: #888;">
+            <p>Под защитой <strong>c0re</strong> | <a href="https://c0rex86.ru" style="color: #f24b4b; text-decoration: none;" target="_blank">c0rex86.ru</a></p>
+        </footer>
     </div>
 
     <script>
@@ -953,4 +944,4 @@ const adminIndexHTML = `<!DOCTYPE html>
         setInterval(fetchStats, 5000);
     </script>
 </body>
-</html>` 
+</html>`

@@ -1,17 +1,17 @@
 package xratelimit
 
 import (
-	"net"
-	"strconv"
-	"sync"
-	"time"
 	"bytes"
 	"fmt"
 	"html/template"
+	"net"
 	"net/http"
 	"path/filepath"
-	"strings"
 	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
@@ -24,9 +24,7 @@ func init() {
 	httpcaddyfile.RegisterHandlerDirective("xratelimit", parseCaddyfile)
 }
 
-
 type RateLimit struct {
-	
 	RequestsPerSecond int      `json:"requests_per_second,omitempty"`
 	BlockDuration     string   `json:"block_duration,omitempty"`
 	AdminPort         int      `json:"admin_port,omitempty"`
@@ -40,20 +38,19 @@ type RateLimit struct {
 	blacklist     map[string]bool
 	mu            sync.RWMutex
 	adminServer   *adminServer
-	
+
 	stats struct {
 		sync.RWMutex
-		totalRequests        int64
-		totalBlocked         int64
-		totalWhitelisted     int64
-		totalBlacklisted     int64
-		requestsPerInterval  map[string]int64 
-		blocksPerInterval    map[string]int64 
-		lastIntervalUpdate   time.Time
-		topVisitors          map[string]int64 
+		totalRequests       int64
+		totalBlocked        int64
+		totalWhitelisted    int64
+		totalBlacklisted    int64
+		requestsPerInterval map[string]int64
+		blocksPerInterval   map[string]int64
+		lastIntervalUpdate  time.Time
+		topVisitors         map[string]int64
 	}
 }
-
 
 type visitor struct {
 	count      int
@@ -64,7 +61,6 @@ type visitor struct {
 	requestIPs []string
 }
 
-
 func (RateLimit) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
 		ID:  "http.handlers.xratelimit",
@@ -72,27 +68,25 @@ func (RateLimit) CaddyModule() caddy.ModuleInfo {
 	}
 }
 
-
 func (rl *RateLimit) Provision(ctx caddy.Context) error {
 	rl.logger = ctx.Logger(rl)
 	rl.visitors = make(map[string]*visitor)
 	rl.whitelist = make(map[string]bool)
 	rl.blacklist = make(map[string]bool)
-	
-	
+
 	rl.stats.requestsPerInterval = make(map[string]int64)
 	rl.stats.blocksPerInterval = make(map[string]int64)
 	rl.stats.topVisitors = make(map[string]int64)
 	rl.stats.lastIntervalUpdate = time.Now()
-	
+
 	if rl.RequestsPerSecond <= 0 {
 		rl.RequestsPerSecond = 10
 	}
-	
+
 	if rl.BlockDuration == "" {
 		rl.BlockDuration = "5m"
 	}
-	
+
 	if rl.AdminPort <= 0 {
 		rl.AdminPort = 6666
 	}
@@ -100,7 +94,7 @@ func (rl *RateLimit) Provision(ctx caddy.Context) error {
 	for _, ip := range rl.WhitelistIPs {
 		rl.whitelist[ip] = true
 	}
-	
+
 	for _, ip := range rl.BlacklistIPs {
 		rl.blacklist[ip] = true
 	}
@@ -110,24 +104,23 @@ func (rl *RateLimit) Provision(ctx caddy.Context) error {
 	if err != nil {
 		return err
 	}
-	
+
 	rl.adminServer = newAdminServer(rl, rl.AdminPort, rl.logger)
 	go rl.adminServer.start()
-	
+
 	go rl.collectStats()
-	
+
 	return nil
 }
-
 
 func (rl *RateLimit) collectStats() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
 		now := time.Now()
-		timeKey := now.Format("15:04") 
-		
+		timeKey := now.Format("15:04")
+
 		rl.stats.Lock()
 		if len(rl.stats.requestsPerInterval) >= 60 {
 			rl.stats.requestsPerInterval = make(map[string]int64)
@@ -139,17 +132,16 @@ func (rl *RateLimit) collectStats() {
 	}
 }
 
-
 func (rl *RateLimit) updateTopVisitors() {
 	rl.mu.RLock()
 	defer rl.mu.RUnlock()
-	
+
 	topVisitors := make(map[string]int64)
-	
+
 	for ip, v := range rl.visitors {
 		topVisitors[ip] = int64(v.count)
 	}
-	
+
 	if len(topVisitors) > 10 {
 		type ipCount struct {
 			IP    string
@@ -159,20 +151,19 @@ func (rl *RateLimit) updateTopVisitors() {
 		for ip, count := range topVisitors {
 			pairs = append(pairs, ipCount{IP: ip, Count: count})
 		}
-		
+
 		sort.Slice(pairs, func(i, j int) bool {
 			return pairs[i].Count > pairs[j].Count
 		})
-		
+
 		topVisitors = make(map[string]int64)
 		for i := 0; i < 10 && i < len(pairs); i++ {
 			topVisitors[pairs[i].IP] = pairs[i].Count
 		}
 	}
-	
+
 	rl.stats.topVisitors = topVisitors
 }
-
 
 func (rl *RateLimit) Cleanup() error {
 	if rl.adminServer != nil {
@@ -180,7 +171,6 @@ func (rl *RateLimit) Cleanup() error {
 	}
 	return nil
 }
-
 
 func (rl *RateLimit) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	ip, err := rl.getClientIP(r)
@@ -191,29 +181,29 @@ func (rl *RateLimit) ServeHTTP(w http.ResponseWriter, r *http.Request, next cadd
 
 	rl.stats.Lock()
 	rl.stats.totalRequests++
-	
-	timeKey := time.Now().Format("15:04") 
+
+	timeKey := time.Now().Format("15:04")
 	rl.stats.requestsPerInterval[timeKey]++
 	rl.stats.Unlock()
 
 	rl.mu.RLock()
 	if rl.whitelist[ip] {
 		rl.mu.RUnlock()
-		
+
 		rl.stats.Lock()
 		rl.stats.totalWhitelisted++
 		rl.stats.Unlock()
-		
+
 		return next.ServeHTTP(w, r)
 	}
-	
+
 	if rl.blacklist[ip] {
 		rl.mu.RUnlock()
-		
+
 		rl.stats.Lock()
 		rl.stats.totalBlacklisted++
 		rl.stats.Unlock()
-		
+
 		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("Access denied: Your IP is blacklisted"))
 		return nil
@@ -224,7 +214,7 @@ func (rl *RateLimit) ServeHTTP(w http.ResponseWriter, r *http.Request, next cadd
 		rl.stats.totalBlocked++
 		rl.stats.blocksPerInterval[timeKey]++
 		rl.stats.Unlock()
-		
+
 		return rl.serveBlockPage(w, r, ip)
 	}
 
@@ -233,13 +223,12 @@ func (rl *RateLimit) ServeHTTP(w http.ResponseWriter, r *http.Request, next cadd
 		rl.stats.totalBlocked++
 		rl.stats.blocksPerInterval[timeKey]++
 		rl.stats.Unlock()
-		
+
 		return rl.serveBlockPage(w, r, ip)
 	}
 
 	return next.ServeHTTP(w, r)
 }
-
 
 func (rl *RateLimit) getClientIP(r *http.Request) (string, error) {
 	forwardedFor := r.Header.Get("X-Forwarded-For")
@@ -260,7 +249,6 @@ func (rl *RateLimit) getClientIP(r *http.Request) (string, error) {
 	return host, nil
 }
 
-
 func (rl *RateLimit) isBlocked(ip string) bool {
 	rl.mu.RLock()
 	defer rl.mu.RUnlock()
@@ -274,7 +262,6 @@ func (rl *RateLimit) isBlocked(ip string) bool {
 		return false
 	}
 
-	
 	if time.Now().After(v.unblockAt) {
 		v.blocked = false
 		return false
@@ -283,19 +270,18 @@ func (rl *RateLimit) isBlocked(ip string) bool {
 	return true
 }
 
-
 func (rl *RateLimit) limitExceeded(ip string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
 	now := time.Now()
 	v, exists := rl.visitors[ip]
-	
+
 	if !exists {
 		rl.visitors[ip] = &visitor{
-			count:     1,
-			lastSeen:  now,
-			blocked:   false,
+			count:      1,
+			lastSeen:   now,
+			blocked:    false,
 			requestIPs: []string{ip},
 		}
 		return false
@@ -319,7 +305,6 @@ func (rl *RateLimit) limitExceeded(ip string) bool {
 	return false
 }
 
-
 func (rl *RateLimit) serveBlockPage(w http.ResponseWriter, r *http.Request, ip string) error {
 	rl.mu.RLock()
 	v, exists := rl.visitors[ip]
@@ -340,7 +325,7 @@ func (rl *RateLimit) serveBlockPage(w http.ResponseWriter, r *http.Request, ip s
 		"BlockDuration":  int(rl.blockDuration.Minutes()),
 		"RemainingMin":   minutes,
 		"RemainingSec":   seconds,
-		"BlockReason":    "Превышение лимита запросов", 
+		"BlockReason":    "Превышение лимита запросов",
 		"TotalRemaining": fmt.Sprintf("%02d:%02d", minutes, seconds),
 	}
 
@@ -363,7 +348,6 @@ func (rl *RateLimit) serveBlockPage(w http.ResponseWriter, r *http.Request, ip s
 	_, err = w.Write(buf.Bytes())
 	return err
 }
-
 
 func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
 	var rl RateLimit
@@ -391,14 +375,14 @@ func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 			}
 			rl.RequestsPerSecond = rps
 			rl.BlockDuration = args[1]
-			
+
 			port, err := strconv.Atoi(args[2])
 			if err != nil {
 				return nil, h.ArgErr()
 			}
 			rl.AdminPort = port
 		case 0:
-			
+
 		default:
 			return nil, h.ArgErr()
 		}
@@ -414,21 +398,21 @@ func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 					return nil, h.ArgErr()
 				}
 				rl.AdminPort = port
-                
+
 			case "whitelist":
 				whitelistArgs := h.RemainingArgs()
 				if len(whitelistArgs) == 0 {
 					return nil, h.ArgErr()
 				}
 				rl.WhitelistIPs = append(rl.WhitelistIPs, whitelistArgs...)
-                
+
 			case "blacklist":
 				blacklistArgs := h.RemainingArgs()
 				if len(blacklistArgs) == 0 {
 					return nil, h.ArgErr()
 				}
 				rl.BlacklistIPs = append(rl.BlacklistIPs, blacklistArgs...)
-                
+
 			default:
 				return nil, h.Errf("unknown subdirective %s", h.Val())
 			}
@@ -437,7 +421,6 @@ func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 
 	return &rl, nil
 }
-
 
 const defaultBlockTemplate = `<!DOCTYPE html>
 <html lang="ru">
@@ -542,6 +525,10 @@ const defaultBlockTemplate = `<!DOCTYPE html>
         </div>
         
         <p>После окончания блокировки вы сможете продолжить использование сайта без ограничений.</p>
+        
+        <footer style="text-align: center; margin-top: 30px; padding: 15px; border-top: 1px solid #333; color: #888;">
+            <p>Под защитой <strong>c0re</strong> | <a href="https://c0rex86.ru" style="color: #f24b4b; text-decoration: none;" target="_blank">c0rex86.ru</a></p>
+        </footer>
     </div>
 
     <script>
@@ -569,4 +556,4 @@ const defaultBlockTemplate = `<!DOCTYPE html>
         }, 1000);
     </script>
 </body>
-</html>` 
+</html>`
